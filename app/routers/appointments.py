@@ -13,7 +13,7 @@ from app.models.appointment import Appointment, AppointmentStatus
 from app.models.working_hours import WorkingHours
 from app.models.notification import Notification
 # from app.core.security import get_current_active_user
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 router = APIRouter(prefix="/api/appointments", tags=["appointments"])
 
@@ -29,15 +29,16 @@ class AppointmentResponse(BaseModel):
     end_time: datetime
     status: AppointmentStatus
     qr_code: str
-    notes: str = None
+    notes: str | None = None
     checked_in: bool = False
 
     class Config:
         orm_mode = True
 
-    @property
-    def checked_in(self) -> bool:
-        return self.status in [AppointmentStatus.IN_PROGRESS, AppointmentStatus.COMPLETED]
+    @model_validator(mode='after')
+    def compute_checked_in(self):
+        self.checked_in = self.status in [AppointmentStatus.IN_PROGRESS, AppointmentStatus.COMPLETED]
+        return self
 
 def generate_qr_code(appointment_id: int, db: Session) -> str:
     # Get appointment details
@@ -253,7 +254,7 @@ async def check_in_appointment(
     #     )
     
     # Update appointment status
-    appointment.status = AppointmentStatus.IN_PROGRESS
+    appointment.status = AppointmentStatus.COMPLETED
     db.commit()
     db.refresh(appointment)
     return {"message": "Appointment checked in successfully"}

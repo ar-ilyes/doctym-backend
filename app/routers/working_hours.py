@@ -9,7 +9,7 @@ from app.core.security import get_current_active_user
 from pydantic import BaseModel
 from app.models.user import Base as UserBase
 from app.models.working_hours import Base as WorkingHoursBase
-from app.models.appointment import Base as AppointmentBase
+from app.models.appointment import AppointmentStatus, Base as AppointmentBase
 from app.models.prescription import Base as PrescriptionBase
 
 router = APIRouter(prefix="/api/doctors", tags=["working-hours"])
@@ -180,7 +180,8 @@ async def get_available_slots(
     appointments = db.query(Appointment).filter(
         Appointment.doctor_id == doctor_id,
         Appointment.start_time >= start_of_day,
-        Appointment.start_time < end_of_day
+        Appointment.start_time < end_of_day,
+        Appointment.status != AppointmentStatus.CANCELLED 
     ).all()
     booked_slots = set()
     for appt in appointments:

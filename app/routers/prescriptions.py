@@ -43,6 +43,54 @@ class PrescriptionResponse(BaseModel):
     class Config:
         orm_mode = True
 
+
+
+@router.post("/bulk", status_code=status.HTTP_200_OK)
+async def create_prescriptions_bulk(
+    prescriptions: List[PrescriptionCreate],
+    db: Session = Depends(get_db),
+    # current_user: User = Depends(get_current_active_user)
+):
+    # Track how many were created and how many already existed
+    created_count = 0
+    existing_count = 0
+    
+    for prescription_data in prescriptions:
+        # Check if prescription already exists
+        existing_prescription = db.query(Prescription).filter(
+            Prescription.appointment_id == prescription_data.appointment_id,
+            Prescription.patient_id == prescription_data.patient_id,
+            Prescription.diagnosis == prescription_data.diagnosis
+        ).first()
+        
+        if existing_prescription:
+            existing_count += 1
+            continue
+        
+        # Convert medications to JSON string
+        medications_json = json.dumps([med.dict() for med in prescription_data.medications])
+        
+        # Create new prescription
+        new_prescription = Prescription(
+            patient_id=prescription_data.patient_id,
+            appointment_id=prescription_data.appointment_id,
+            doctor_id=2,  # You may want to get this from authentication or pass it in
+            diagnosis=prescription_data.diagnosis,
+            medications=medications_json,  # Store as JSON string
+            instructions=prescription_data.instructions
+        )
+        
+        db.add(new_prescription)
+        created_count += 1
+    
+    # Commit all changes at once
+    db.commit()
+    
+    return {
+        "status": "success",
+        "message": f"Processed {len(prescriptions)} prescriptions. Created: {created_count}, Already existed: {existing_count}"
+    }
+
 @router.post("", response_model=PrescriptionResponse)
 async def create_prescription(
     prescription: PrescriptionCreate,
@@ -299,3 +347,5 @@ async def get_prescription_by_appointment(
     
     prescription.medications = json.loads(prescription.medications)
     return prescription 
+
+

@@ -17,8 +17,8 @@ class NotificationResponse(BaseModel):
     type: str
     is_read: bool
     created_at: datetime
-    appointment_id: int = None
-    prescription_id: int = None
+    appointment_id: int | None = None
+    prescription_id: int | None = None
 
     class Config:
         orm_mode = True
