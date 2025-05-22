@@ -24,6 +24,8 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    is_doctor: bool
+    user_id: int
 
 @router.post("/register", response_model=Token)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
@@ -52,7 +54,8 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     
     # Create access token
     access_token = create_access_token(data={"sub": db_user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    
+    return {"access_token": access_token, "token_type": "bearer", "is_doctor": db_user.is_doctor, "user_id": db_user.id,}
 
 @router.post("/login", response_model=Token)
 async def login(user_data: UserLogin, db: Session = Depends(get_db)):
@@ -65,4 +68,4 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
         )
     
     access_token = create_access_token(data={"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"} 
+    return {"access_token": access_token, "token_type": "bearer", "is_doctor": user.is_doctor, "user_id": user.id,} 
