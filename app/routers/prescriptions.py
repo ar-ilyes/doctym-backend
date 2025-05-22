@@ -12,7 +12,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from app.database import get_db
 from app.models.user import User
 from app.models.prescription import Prescription
-from app.core.security import get_current_active_user
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/prescriptions", tags=["prescriptions"])
@@ -47,23 +46,18 @@ class PrescriptionResponse(BaseModel):
 @router.post("", response_model=PrescriptionResponse)
 async def create_prescription(
     prescription: PrescriptionCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: Session = Depends(get_db)
 ):
-    # Verify the current user is a doctor
-    if not current_user.is_doctor:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only doctors can create prescriptions"
-        )
+    # Convert medications list to JSON string
+    medications_json = json.dumps([med.dict() for med in prescription.medications])
     
     # Create prescription
     db_prescription = Prescription(
-        doctor_id=current_user.id,
+        doctor_id=2,#TODO: change to current user
         patient_id=prescription.patient_id,
         appointment_id=prescription.appointment_id,
         diagnosis=prescription.diagnosis,
-        medications=json.dumps([med.dict() for med in prescription.medications]),
+        medications=medications_json,  # Store as JSON string
         instructions=prescription.instructions
     )
     
@@ -72,14 +66,13 @@ async def create_prescription(
     db.refresh(db_prescription)
     
     # Convert medications back to list for response
-    db_prescription.medications = json.loads(db_prescription.medications)
+    db_prescription.medications = prescription.medications
     return db_prescription
 
 @router.get("/{prescription_id}", response_model=PrescriptionResponse)
 async def get_prescription(
     prescription_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: Session = Depends(get_db)
 ):
     prescription = db.query(Prescription).filter(Prescription.id == prescription_id).first()
     if not prescription:
@@ -88,29 +81,13 @@ async def get_prescription(
             detail="Prescription not found"
         )
     
-    # Verify the current user is either the doctor or the patient
-    if current_user.id not in [prescription.doctor_id, prescription.patient_id]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view this prescription"
-        )
-    
-    prescription.medications = json.loads(prescription.medications)
     return prescription
 
 @router.get("/patient/{patient_id}", response_model=List[PrescriptionResponse])
 async def get_patient_prescriptions(
     patient_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: Session = Depends(get_db)
 ):
-    # Verify the current user is the patient
-    if current_user.id != patient_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view these prescriptions"
-        )
-    
     prescriptions = db.query(Prescription).filter(Prescription.patient_id == patient_id).all()
     for prescription in prescriptions:
         prescription.medications = json.loads(prescription.medications)
@@ -119,16 +96,8 @@ async def get_patient_prescriptions(
 @router.get("/doctor/{doctor_id}", response_model=List[PrescriptionResponse])
 async def get_doctor_prescriptions(
     doctor_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: Session = Depends(get_db)
 ):
-    # Verify the current user is the doctor
-    if current_user.id != doctor_id or not current_user.is_doctor:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view these prescriptions"
-        )
-    
     prescriptions = db.query(Prescription).filter(Prescription.doctor_id == doctor_id).all()
     for prescription in prescriptions:
         prescription.medications = json.loads(prescription.medications)
@@ -137,21 +106,13 @@ async def get_doctor_prescriptions(
 @router.post("/{prescription_id}/download")
 async def download_prescription(
     prescription_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: Session = Depends(get_db)
 ):
     prescription = db.query(Prescription).filter(Prescription.id == prescription_id).first()
     if not prescription:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Prescription not found"
-        )
-    
-    # Verify the current user is either the doctor or the patient
-    if current_user.id not in [prescription.doctor_id, prescription.patient_id]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to download this prescription"
         )
     
     # Get doctor and patient details
@@ -231,21 +192,13 @@ async def download_prescription(
 @router.get("/{prescription_id}/pdf")
 async def get_prescription_pdf(
     prescription_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: Session = Depends(get_db)
 ):
     prescription = db.query(Prescription).filter(Prescription.id == prescription_id).first()
     if not prescription:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Prescription not found"
-        )
-    
-    # Verify the current user is either the doctor or the patient
-    if current_user.id not in [prescription.doctor_id, prescription.patient_id]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view this prescription"
         )
     
     # Get doctor and patient details
@@ -335,21 +288,13 @@ async def get_prescription_pdf(
 @router.get("/appointment/{appointment_id}", response_model=PrescriptionResponse)
 async def get_prescription_by_appointment(
     appointment_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    db: Session = Depends(get_db)
 ):
     prescription = db.query(Prescription).filter(Prescription.appointment_id == appointment_id).first()
     if not prescription:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No prescription found for this appointment"
-        )
-    
-    # Verify the current user is either the doctor or the patient
-    if current_user.id not in [prescription.doctor_id, prescription.patient_id]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view this prescription"
         )
     
     prescription.medications = json.loads(prescription.medications)

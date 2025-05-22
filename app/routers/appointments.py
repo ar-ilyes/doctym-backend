@@ -12,7 +12,7 @@ from app.models.user import User
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.working_hours import WorkingHours
 from app.models.notification import Notification
-from app.core.security import get_current_active_user
+# from app.core.security import get_current_active_user
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/appointments", tags=["appointments"])
@@ -30,9 +30,14 @@ class AppointmentResponse(BaseModel):
     status: AppointmentStatus
     qr_code: str
     notes: str = None
+    checked_in: bool = False
 
     class Config:
         orm_mode = True
+
+    @property
+    def checked_in(self) -> bool:
+        return self.status in [AppointmentStatus.IN_PROGRESS, AppointmentStatus.COMPLETED]
 
 def generate_qr_code(appointment_id: int, db: Session) -> str:
     # Get appointment details
@@ -114,14 +119,17 @@ def is_time_slot_available(
 async def create_appointment(
     appointment: AppointmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    # current_user: User = Depends(get_current_active_user)
 ):
     # Verify the current user is a patient
-    if current_user.is_doctor:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Doctors cannot create appointments"
-        )
+    # if current_user.is_doctor:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="Doctors cannot create appointments"
+    #     )
+    
+    # For testing, use a default patient ID
+    patient_id = 1  # You can modify this as needed
     
     # Calculate end time (1 hour duration)
     end_time = appointment.start_time + timedelta(hours=1)
@@ -136,7 +144,7 @@ async def create_appointment(
     # Create appointment
     db_appointment = Appointment(
         doctor_id=appointment.doctor_id,
-        patient_id=current_user.id,
+        patient_id=patient_id,  # Using default patient ID
         start_time=appointment.start_time,
         end_time=end_time,
         status=AppointmentStatus.SCHEDULED
@@ -154,7 +162,7 @@ async def create_appointment(
     
     # Create confirmation notification
     notification = Notification(
-        user_id=current_user.id,
+        user_id=patient_id,
         title="Appointment Confirmed",
         message=f"Your appointment with Dr. {db_appointment.doctor.full_name} has been confirmed for {db_appointment.start_time.strftime('%Y-%m-%d %H:%M')}",
         type="appointment",
@@ -169,20 +177,13 @@ async def create_appointment(
 async def get_appointment(
     appointment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    # current_user: User = Depends(get_current_active_user)
 ):
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Appointment not found"
-        )
-    
-    # Verify the current user is either the doctor or the patient
-    if current_user.id not in [appointment.doctor_id, appointment.patient_id]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view this appointment"
         )
     
     return appointment
@@ -191,15 +192,8 @@ async def get_appointment(
 async def get_doctor_appointments(
     doctor_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    # current_user: User = Depends(get_current_active_user)
 ):
-    # Verify the current user is the doctor
-    if current_user.id != doctor_id or not current_user.is_doctor:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view these appointments"
-        )
-    
     appointments = db.query(Appointment).filter(Appointment.doctor_id == doctor_id).all()
     return appointments
 
@@ -207,15 +201,8 @@ async def get_doctor_appointments(
 async def get_patient_appointments(
     patient_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    # current_user: User = Depends(get_current_active_user)
 ):
-    # Verify the current user is the patient
-    if current_user.id != patient_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view these appointments"
-        )
-    
     appointments = db.query(Appointment).filter(Appointment.patient_id == patient_id).all()
     return appointments
 
@@ -224,7 +211,7 @@ async def update_appointment_status(
     appointment_id: int,
     status: AppointmentStatus,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    # current_user: User = Depends(get_current_active_user)
 ):
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
@@ -234,11 +221,11 @@ async def update_appointment_status(
         )
     
     # Verify the current user is the doctor
-    if current_user.id != appointment.doctor_id or not current_user.is_doctor:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update appointment status"
-        )
+    # if current_user.id != appointment.doctor_id or not current_user.is_doctor:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="Not authorized to update appointment status"
+    #     )
     
     appointment.status = status
     db.commit()
@@ -249,7 +236,7 @@ async def update_appointment_status(
 async def check_in_appointment(
     appointment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    # current_user: User = Depends(get_current_active_user)
 ):
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
@@ -259,11 +246,11 @@ async def check_in_appointment(
         )
     
     # Verify the current user is the doctor
-    if current_user.id != appointment.doctor_id or not current_user.is_doctor:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to check in appointments"
-        )
+    # if current_user.id != appointment.doctor_id or not current_user.is_doctor:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="Not authorized to check in appointments"
+    #     )
     
     # Update appointment status
     appointment.status = AppointmentStatus.IN_PROGRESS
@@ -275,7 +262,7 @@ async def check_in_appointment(
 async def get_appointment_qr_code(
     appointment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    # current_user: User = Depends(get_current_active_user)
 ):
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
@@ -285,11 +272,11 @@ async def get_appointment_qr_code(
         )
     
     # Verify the current user is either the doctor or the patient
-    if current_user.id not in [appointment.doctor_id, appointment.patient_id]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view this QR code"
-        )
+    # if current_user.id not in [appointment.doctor_id, appointment.patient_id]:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_403_FORBIDDEN,
+    #         detail="Not authorized to view this QR code"
+    #     )
     
     # Generate QR code with verification data
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
